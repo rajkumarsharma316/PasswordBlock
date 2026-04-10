@@ -130,7 +130,7 @@ impl PasswordVaultContract {
     pub fn get_all_entries(
         env: Env,
         user: Address,
-    ) -> Vec<EncryptedEntry> {
+    ) -> Vec<(BytesN<32>, EncryptedEntry)> {
         user.require_auth();
 
         let ids_key = DataKey::EntryIds(user.clone());
@@ -144,7 +144,7 @@ impl PasswordVaultContract {
         for id in ids.iter() {
             let entry_key = DataKey::Entry(user.clone(), id.clone());
             if let Some(entry) = env.storage().persistent().get::<DataKey, EncryptedEntry>(&entry_key) {
-                entries.push_back(entry);
+                entries.push_back((id, entry));
             }
         }
         entries
