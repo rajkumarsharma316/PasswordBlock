@@ -5,6 +5,8 @@ PasswordBlock is a professional-grade, decentralized password management solutio
 ## 🚀 Key Features
 
 - **Multi-Wallet Support**: Integrated with `StellarWalletsKit` for a seamless connection experience across **Freighter, xBull, Hana, and Albedo**.
+- **<img width="1910" height="904" alt="image" src="https://github.com/user-attachments/assets/bebc2c07-8b33-45de-92f3-8d4f47ed7dc2" />
+**.
 - **On-Chain Persistence**: All vault metadata and encrypted entries are stored on the **Stellar Testnet** using high-performance Soroban smart contracts.
 - **End-to-End Encryption**: Credentials are never sent in plain text. We use your unique wallet signature to derive a master key, ensuring only *you* can decrypt your data.
 - **Real-Time Synchronization**: A sophisticated event-polling system ensures your vault is always in sync with the latest on-chain state.
