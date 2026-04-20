@@ -9,6 +9,7 @@
 import { Buffer } from 'buffer';
 import type { EncryptedData } from '../crypto/encryption';
 import * as PasswordVault from '../contracts/password-vault';
+import { signTransaction, signAuthEntry } from '@stellar/freighter-api';
 
 // ── Configuration ───────────────────────────────────────────────────────
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || '';
@@ -39,6 +40,37 @@ function getDemoEntries(userKey: string): ChainEntry[] {
 
 function setDemoEntries(userKey: string, entries: ChainEntry[]): void {
   localStorage.setItem(`${DEMO_STORAGE_KEY}_${userKey}`, JSON.stringify(entries));
+}
+
+// ── On-chain Client Factory ───────────────────────────────────────────────
+function getClient(userPublicKey: string) {
+  return new PasswordVault.Client({
+    networkPassphrase: PasswordVault.networks.testnet.networkPassphrase,
+    contractId: PasswordVault.networks.testnet.contractId,
+    rpcUrl: 'https://soroban-testnet.stellar.org:443',
+    publicKey: userPublicKey,
+    signTransaction: async (txXdr: string, opts?: any) => {
+      try {
+        const signedTxXdr = await signTransaction(txXdr, { 
+          network: 'TESTNET', 
+          networkPassphrase: opts?.networkPassphrase 
+        });
+        return { signedTxXdr };
+      } catch (error: any) {
+        return { error: error.message || String(error) } as any;
+      }
+    },
+    signAuthEntry: async (entryXdr: string, opts?: any) => {
+      try {
+        const signedAuthEntry = await signAuthEntry(entryXdr, { 
+          accountToSign: opts?.address 
+        });
+        return { signedAuthEntry };
+      } catch (error: any) {
+        return { error: error.message || String(error) } as any;
+      }
+    }
+  });
 }
 
 // ── Public API ──────────────────────────────────────────────────────────
@@ -74,12 +106,7 @@ export async function storeEntry(
   }
 
   // ── On-chain (Soroban SDK) ──────────────
-  const client = new PasswordVault.Client({
-    networkPassphrase: PasswordVault.networks.testnet.networkPassphrase,
-    contractId: PasswordVault.networks.testnet.contractId,
-    rpcUrl: 'https://soroban-testnet.stellar.org:443',
-    publicKey: userPublicKey,
-  });
+  const client = getClient(userPublicKey);
 
   const tx = await client.store_entry({
     user: userPublicKey,
@@ -104,12 +131,7 @@ export async function getAllEntries(
   }
 
   // On-chain fetch
-  const client = new PasswordVault.Client({
-    networkPassphrase: PasswordVault.networks.testnet.networkPassphrase,
-    contractId: PasswordVault.networks.testnet.contractId,
-    rpcUrl: 'https://soroban-testnet.stellar.org:443',
-    publicKey: userPublicKey,
-  });
+  const client = getClient(userPublicKey);
 
   const result = await client.get_all_entries({ user: userPublicKey });
   const entries: ChainEntry[] = [];
@@ -142,12 +164,7 @@ export async function deleteEntry(
     return;
   }
 
-  const client = new PasswordVault.Client({
-    networkPassphrase: PasswordVault.networks.testnet.networkPassphrase,
-    contractId: PasswordVault.networks.testnet.contractId,
-    rpcUrl: 'https://soroban-testnet.stellar.org:443',
-    publicKey: userPublicKey,
-  });
+  const client = getClient(userPublicKey);
 
   const tx = await client.delete_entry({
     user: userPublicKey,
@@ -168,12 +185,7 @@ export async function getEntryCount(
     return getDemoEntries(userPublicKey).length;
   }
 
-  const client = new PasswordVault.Client({
-    networkPassphrase: PasswordVault.networks.testnet.networkPassphrase,
-    contractId: PasswordVault.networks.testnet.contractId,
-    rpcUrl: 'https://soroban-testnet.stellar.org:443',
-    publicKey: userPublicKey,
-  });
+  const client = getClient(userPublicKey);
 
   const tx = await client.get_entry_count({ user: userPublicKey });
   return Number(tx.result);
