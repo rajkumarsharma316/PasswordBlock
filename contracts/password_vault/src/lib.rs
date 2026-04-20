@@ -78,7 +78,7 @@ impl PasswordVaultContract {
                 .get(&ids_key)
                 .unwrap_or(Vec::new(&env));
 
-            ids.push_back(entry_id);
+            ids.push_back(entry_id.clone());
             env.storage().persistent().set(&ids_key, &ids);
             env.storage()
                 .persistent()
@@ -102,6 +102,12 @@ impl PasswordVaultContract {
                     .extend_ttl(&ids_key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
             }
         }
+
+        // ── Emit Event ──
+        env.events().publish(
+            (Symbol::new(&env, "store_entry"), user),
+            entry_id
+        );
     }
 
     // ── Get a Single Entry ──────────────────────────────────────────────
@@ -183,7 +189,7 @@ impl PasswordVaultContract {
             .extend_ttl(&ids_key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
 
         // Decrement count
-        let count_key = DataKey::EntryCount(user);
+        let count_key = DataKey::EntryCount(user.clone());
         let count: u32 = env
             .storage()
             .persistent()
@@ -194,6 +200,12 @@ impl PasswordVaultContract {
         env.storage()
             .persistent()
             .extend_ttl(&count_key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
+
+        // ── Emit Event ──
+        env.events().publish(
+            (Symbol::new(&env, "delete_entry"), user),
+            entry_id
+        );
     }
 
     // ── Get Entry Count (no auth needed — public info) ──────────────────

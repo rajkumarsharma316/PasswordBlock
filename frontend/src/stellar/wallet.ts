@@ -1,77 +1,63 @@
 /**
- * PasswordBlock — Freighter wallet integration.
+ * PasswordBlock — StellarWalletsKit integration.
  *
- * Handles connecting/disconnecting the Freighter browser extension,
- * fetching public key and network. Falls back to "demo mode" when
- * Freighter is not available.
+ * Handles connecting multiple Stellar wallets (Freighter, xBull, etc.)
+ * using a unified modal. Falls back to "demo mode" when needed.
  */
 
-import {
-  requestAccess,
-  isConnected,
-  getNetwork,
-  signBlob,
-} from '@stellar/freighter-api';
+import { StellarWalletsKit, Networks } from './kit';
 
 export interface WalletConnection {
   publicKey: string;
   network: string;
 }
 
-const UNLOCK_MESSAGE = btoa('PasswordBlock_Master_Key');
+const UNLOCK_MESSAGE = 'PasswordBlock_Master_Key_v2'; 
 
 /**
- * Sign a deterministic message with Freighter to act as the encryption key.
+ * Sign a deterministic message to act as the encryption key.
  */
 export async function signUnlockMessage(publicKey: string): Promise<string> {
   try {
-    const signature = await signBlob(UNLOCK_MESSAGE, { accountToSign: publicKey });
-    if (!signature) throw new Error('Signature was empty');
-    return signature;
+    // In v2, we use signMessage for arbitrary strings
+    const { signedMessage } = await StellarWalletsKit.signMessage(UNLOCK_MESSAGE, {
+      address: publicKey
+    });
+    
+    if (!signedMessage) throw new Error('Signature was empty');
+    return signedMessage;
   } catch (err: unknown) {
-    if (err instanceof Error) throw err;
+    if (err instanceof Error) {
+      if (err.message.includes('code: -1') || err.message.includes('closed') || err.message.includes('rejected')) {
+        throw new Error('Wallet Signature Rejected: Please sign the message to unlock your vault.');
+      }
+      throw err;
+    }
     throw new Error('Failed to sign unlock message.');
   }
 }
 
 /**
- * Check if Freighter extension is installed and available.
- */
-export async function isFreighterInstalled(): Promise<boolean> {
-  try {
-    return await isConnected();
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Connect to Freighter and retrieve the user's public key + network.
+ * Connect to a wallet using the kit's modal and retrieve the user's public key + network.
  */
 export async function connectWallet(): Promise<WalletConnection> {
-  const installed = await isFreighterInstalled();
-  if (!installed) {
-    throw new Error(
-      'Freighter wallet not found. Please install the Freighter browser extension.'
-    );
-  }
-
   try {
-    // requestAccess returns the public key as a string
-    const publicKey = await requestAccess();
-    if (!publicKey) {
-      throw new Error('Failed to get public key from Freighter.');
+    // Open v2 auth modal
+    const { address } = await StellarWalletsKit.authModal();
+    
+    if (!address) {
+      throw new Error('Failed to get address from wallet.');
     }
 
-    // getNetwork returns the network name as a string
-    const network = await getNetwork();
-
-    return { publicKey, network: network || 'TESTNET' };
+    return { publicKey: address, network: 'TESTNET' };
   } catch (err: unknown) {
     if (err instanceof Error) {
+      if (err.message.includes('closed')) {
+        throw new Error('Connection Canceled: The modal was closed.');
+      }
       throw err;
     }
-    throw new Error('Failed to connect to Freighter wallet.');
+    throw new Error('Failed to connect to Stellar wallet.');
   }
 }
 
@@ -80,8 +66,8 @@ export async function connectWallet(): Promise<WalletConnection> {
  */
 export async function getWalletAddress(): Promise<string | null> {
   try {
-    const publicKey = await requestAccess();
-    return publicKey || null;
+    const { address } = await StellarWalletsKit.getAddress();
+    return address || null;
   } catch {
     return null;
   }

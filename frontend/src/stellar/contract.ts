@@ -9,7 +9,7 @@
 import { Buffer } from 'buffer';
 import type { EncryptedData } from '../crypto/encryption';
 import * as PasswordVault from '../contracts/password-vault';
-import { signTransaction, signAuthEntry } from '@stellar/freighter-api';
+import { StellarWalletsKit } from './kit';
 
 // ── Configuration ───────────────────────────────────────────────────────
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || '';
@@ -24,6 +24,12 @@ export interface ChainEntry {
   encrypted_data: string; // JSON of EncryptedData
   encrypted_label: string; // JSON of EncryptedData
   timestamp: number;
+}
+
+export interface TxResult {
+  hash?: string;
+  success: boolean;
+  error?: string;
 }
 
 // ── Demo mode (localStorage) ────────────────────────────────────────────
@@ -46,14 +52,13 @@ function setDemoEntries(userKey: string, entries: ChainEntry[]): void {
 function getClient(userPublicKey: string) {
   return new PasswordVault.Client({
     networkPassphrase: PasswordVault.networks.testnet.networkPassphrase,
-    contractId: PasswordVault.networks.testnet.contractId,
+    contractId: CONTRACT_ID || PasswordVault.networks.testnet.contractId,
     rpcUrl: 'https://soroban-testnet.stellar.org:443',
     publicKey: userPublicKey,
     signTransaction: async (txXdr: string, opts?: any) => {
       try {
-        const signedTxXdr = await signTransaction(txXdr, { 
-          network: 'TESTNET', 
-          networkPassphrase: opts?.networkPassphrase 
+        const { signedTxXdr } = await StellarWalletsKit.signTransaction(txXdr, {
+          networkPassphrase: opts?.networkPassphrase
         });
         return { signedTxXdr };
       } catch (error: any) {
@@ -62,8 +67,9 @@ function getClient(userPublicKey: string) {
     },
     signAuthEntry: async (entryXdr: string, opts?: any) => {
       try {
-        const signedAuthEntry = await signAuthEntry(entryXdr, { 
-          accountToSign: opts?.address 
+        const { signedAuthEntry } = await StellarWalletsKit.signAuthEntry(entryXdr, {
+          networkPassphrase: opts?.networkPassphrase,
+          address: opts?.address
         });
         return { signedAuthEntry };
       } catch (error: any) {
@@ -84,7 +90,7 @@ export async function storeEntry(
   encryptedData: EncryptedData,
   encryptedLabel: EncryptedData,
   _isDemo: boolean
-): Promise<void> {
+): Promise<TxResult> {
   if (_isDemo || !isContractConfigured()) {
     // Demo: use localStorage
     const entries = getDemoEntries(userPublicKey);
@@ -102,21 +108,31 @@ export async function storeEntry(
       entries.push(chainEntry);
     }
     setDemoEntries(userPublicKey, entries);
-    return;
+    return { success: true };
   }
 
   // ── On-chain (Soroban SDK) ──────────────
-  const client = getClient(userPublicKey);
+  try {
+    const client = getClient(userPublicKey);
 
-  const tx = await client.store_entry({
-    user: userPublicKey,
-    entry_id: Buffer.from(entryId, 'hex'),
-    encrypted_data: Buffer.from(JSON.stringify(encryptedData), 'utf-8'),
-    encrypted_label: Buffer.from(JSON.stringify(encryptedLabel), 'utf-8'),
-    timestamp: BigInt(Date.now()),
-  });
+    const tx = await client.store_entry({
+      user: userPublicKey,
+      entry_id: Buffer.from(entryId, 'hex'),
+      encrypted_data: Buffer.from(JSON.stringify(encryptedData), 'utf-8'),
+      encrypted_label: Buffer.from(JSON.stringify(encryptedLabel), 'utf-8'),
+      timestamp: BigInt(Date.now()),
+    });
 
-  await tx.signAndSend();
+    const result = await tx.signAndSend();
+    return { 
+      success: true, 
+      hash: result.sendTransactionResponse?.hash 
+    };
+  } catch (err: any) {
+    let error = err.message || 'Transaction failed';
+    if (error.includes('STW-001')) error = 'Transaction rejected by user.';
+    return { success: false, error };
+  }
 }
 
 /**
@@ -130,22 +146,25 @@ export async function getAllEntries(
     return getDemoEntries(userPublicKey);
   }
 
-  // On-chain fetch
-  const client = getClient(userPublicKey);
+  try {
+    const client = getClient(userPublicKey);
+    const result = await client.get_all_entries({ user: userPublicKey });
+    const entries: ChainEntry[] = [];
+    
+    for (const [idBuf, entry] of result.result) {
+      entries.push({
+        entry_id: idBuf.toString('hex'),
+        encrypted_data: entry.data.toString('utf-8'),
+        encrypted_label: entry.label.toString('utf-8'),
+        timestamp: Number(entry.timestamp),
+      });
+    }
 
-  const result = await client.get_all_entries({ user: userPublicKey });
-  const entries: ChainEntry[] = [];
-  
-  for (const [idBuf, entry] of result.result) {
-    entries.push({
-      entry_id: idBuf.toString('hex'),
-      encrypted_data: entry.data.toString('utf-8'),
-      encrypted_label: entry.label.toString('utf-8'),
-      timestamp: Number(entry.timestamp),
-    });
+    return entries;
+  } catch (err) {
+    console.error('Failed to fetch entries from chain:', err);
+    return [];
   }
-
-  return entries;
 }
 
 /**
@@ -155,23 +174,33 @@ export async function deleteEntry(
   userPublicKey: string,
   entryId: string,
   _isDemo: boolean
-): Promise<void> {
+): Promise<TxResult> {
   if (_isDemo || !isContractConfigured()) {
     const entries = getDemoEntries(userPublicKey).filter(
       (e) => e.entry_id !== entryId
     );
     setDemoEntries(userPublicKey, entries);
-    return;
+    return { success: true };
   }
 
-  const client = getClient(userPublicKey);
+  try {
+    const client = getClient(userPublicKey);
 
-  const tx = await client.delete_entry({
-    user: userPublicKey,
-    entry_id: Buffer.from(entryId, 'hex'),
-  });
+    const tx = await client.delete_entry({
+      user: userPublicKey,
+      entry_id: Buffer.from(entryId, 'hex'),
+    });
 
-  await tx.signAndSend();
+    const result = await tx.signAndSend();
+    return { 
+      success: true, 
+      hash: result.sendTransactionResponse?.hash 
+    };
+  } catch (err: any) {
+    let error = err.message || 'Transaction failed';
+    if (error.includes('STW-001')) error = 'Delete transaction rejected.';
+    return { success: false, error };
+  }
 }
 
 /**
@@ -185,8 +214,11 @@ export async function getEntryCount(
     return getDemoEntries(userPublicKey).length;
   }
 
-  const client = getClient(userPublicKey);
-
-  const tx = await client.get_entry_count({ user: userPublicKey });
-  return Number(tx.result);
+  try {
+    const client = getClient(userPublicKey);
+    const tx = await client.get_entry_count({ user: userPublicKey });
+    return Number(tx.result);
+  } catch {
+    return 0;
+  }
 }

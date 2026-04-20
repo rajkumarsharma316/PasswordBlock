@@ -26,6 +26,7 @@ const App: React.FC = () => {
   const {
     entries,
     loading: entriesLoading,
+    actionLoading,
     addEntry,
     updateEntry,
     removeEntry,
@@ -59,21 +60,62 @@ const App: React.FC = () => {
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
+  // ── Helper to show Tx toast ──────────────────────────────────────────
+  const showTxToast = (message: string, hash?: string) => {
+    toast.success(
+      (t) => (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontWeight: 600 }}>{message}</span>
+          {hash && (
+            <a
+              href={`https://stellar.expert/explorer/testnet/tx/${hash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                fontSize: '0.75rem',
+                color: '#3B82F6',
+                textDecoration: 'underline',
+              }}
+              onClick={() => toast.dismiss(t.id)}
+            >
+              View on Explorer: {hash.slice(0, 8)}...{hash.slice(-8)}
+            </a>
+          )}
+        </div>
+      ),
+      {
+        duration: 5000,
+        style: {
+          background: '#111827',
+          color: '#F1F5F9',
+          border: '1px solid rgba(59, 130, 246, 0.2)',
+        },
+      }
+    );
+  };
+
   // ── Handle delete with confirmation ───────────────────────────────
   const handleDelete = useCallback(
     async (id: string) => {
       if (deleteConfirm === id) {
+        const loadingToast = toast.loading('Transaction pending...', {
+          style: {
+            background: '#111827',
+            color: '#F1F5F9',
+            border: '1px solid rgba(255,255,255,0.06)',
+          },
+        });
         try {
-          await removeEntry(id);
-          toast.success('Password deleted.', {
-            style: {
-              background: '#111827',
-              color: '#F1F5F9',
-              border: '1px solid rgba(255,255,255,0.06)',
-            },
-          });
+          const result = await removeEntry(id);
+          toast.dismiss(loadingToast);
+          if (result.success) {
+            showTxToast('Password deleted.', result.hash);
+          } else {
+            toast.error(result.error || 'Failed to delete password.');
+          }
         } catch {
-          toast.error('Failed to delete password.');
+          toast.dismiss(loadingToast);
+          toast.error('An unexpected error occurred.');
         }
         setDeleteConfirm(null);
       } else {
@@ -86,7 +128,6 @@ const App: React.FC = () => {
             border: '1px solid rgba(245,158,11,0.2)',
           },
         });
-        // Auto-clear confirmation after 3 seconds
         setTimeout(() => setDeleteConfirm(null), 3000);
       }
     },
@@ -96,30 +137,40 @@ const App: React.FC = () => {
   // ── Handle save / update ──────────────────────────────────────────
   const handleSave = useCallback(
     async (data: Omit<PasswordEntry, 'id' | 'createdAt' | 'updatedAt'>) => {
-      await addEntry(data);
-      toast.success('Password saved on-chain!', {
-        icon: '✅',
+      const loadingToast = toast.loading('Sharing with the blockchain...', {
         style: {
           background: '#111827',
           color: '#F1F5F9',
           border: '1px solid rgba(255,255,255,0.06)',
         },
       });
+      const result = await addEntry(data);
+      toast.dismiss(loadingToast);
+      if (result.success) {
+        showTxToast('Password saved on-chain!', result.hash);
+      } else {
+        toast.error(result.error || 'Failed to save password.');
+      }
     },
     [addEntry]
   );
 
   const handleUpdate = useCallback(
     async (entry: PasswordEntry) => {
-      await updateEntry(entry);
-      toast.success('Password updated on-chain!', {
-        icon: '✏️',
+      const loadingToast = toast.loading('Updating on-chain...', {
         style: {
           background: '#111827',
           color: '#F1F5F9',
           border: '1px solid rgba(255,255,255,0.06)',
         },
       });
+      const result = await updateEntry(entry);
+      toast.dismiss(loadingToast);
+      if (result.success) {
+        showTxToast('Password updated on-chain!', result.hash);
+      } else {
+        toast.error(result.error || 'Failed to update password.');
+      }
     },
     [updateEntry]
   );

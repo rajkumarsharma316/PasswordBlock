@@ -7,7 +7,7 @@
 
 import { useState, useCallback } from 'react';
 import type { WalletState } from '../types';
-import { connectWallet, isFreighterInstalled, shortenAddress, signUnlockMessage } from '../stellar/wallet';
+import { connectWallet, shortenAddress, signUnlockMessage } from '../stellar/wallet';
 
 const DEMO_PUBLIC_KEY = 'GDEMO000000000000000000000000000000000000000DEMOKEY';
 
@@ -27,20 +27,7 @@ export function useWallet() {
     setLoading(true);
     setError(null);
     try {
-      const installed = await isFreighterInstalled();
-      if (!installed) {
-        // Enter demo mode
-        const demoSignature = btoa(`DEMO_SIGNATURE_FOR_${DEMO_PUBLIC_KEY}`);
-        setWallet({
-          connected: true,
-          publicKey: DEMO_PUBLIC_KEY,
-          network: 'DEMO',
-          signature: demoSignature,
-          isDemo: true,
-        });
-        return;
-      }
-
+      // Current kit logic opens a modal. If it fails or is canceled, it throws.
       const { publicKey, network } = await connectWallet();
       const signature = await signUnlockMessage(publicKey);
       
@@ -52,8 +39,16 @@ export function useWallet() {
         isDemo: false,
       });
     } catch (err: unknown) {
+      if (err instanceof Error && (err.message.includes('Rejected') || err.message.includes('canceled'))) {
+        // Just stop loading, don't show error if user just closed the modal
+        setLoading(false);
+        return;
+      }
       const message = err instanceof Error ? err.message : 'Failed to connect wallet';
       setError(message);
+      
+      // Fallback to demo mode if user wants? Or just show error.
+      // For Yellow Belt, we want to show we handles errors.
     } finally {
       setLoading(false);
     }
