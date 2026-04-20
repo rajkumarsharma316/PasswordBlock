@@ -5,9 +5,9 @@
  * Falls back to demo mode when Freighter is not available.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import type { WalletState } from '../types';
-import { connectWallet, isFreighterInstalled, shortenAddress } from '../stellar/wallet';
+import { connectWallet, isFreighterInstalled, shortenAddress, signUnlockMessage } from '../stellar/wallet';
 
 const DEMO_PUBLIC_KEY = 'GDEMO000000000000000000000000000000000000000DEMOKEY';
 
@@ -21,22 +21,7 @@ export function useWallet() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Auto-detect Freighter on mount
-  useEffect(() => {
-    const check = async () => {
-      const installed = await isFreighterInstalled();
-      if (!installed) {
-        // Auto-connect in demo mode
-        setWallet({
-          connected: true,
-          publicKey: DEMO_PUBLIC_KEY,
-          network: 'DEMO',
-          isDemo: true,
-        });
-      }
-    };
-    check();
-  }, []);
+
 
   const connect = useCallback(async () => {
     setLoading(true);
@@ -45,20 +30,25 @@ export function useWallet() {
       const installed = await isFreighterInstalled();
       if (!installed) {
         // Enter demo mode
+        const demoSignature = btoa(`DEMO_SIGNATURE_FOR_${DEMO_PUBLIC_KEY}`);
         setWallet({
           connected: true,
           publicKey: DEMO_PUBLIC_KEY,
           network: 'DEMO',
+          signature: demoSignature,
           isDemo: true,
         });
         return;
       }
 
       const { publicKey, network } = await connectWallet();
+      const signature = await signUnlockMessage(publicKey);
+      
       setWallet({
         connected: true,
         publicKey,
         network,
+        signature,
         isDemo: false,
       });
     } catch (err: unknown) {
@@ -74,6 +64,7 @@ export function useWallet() {
       connected: false,
       publicKey: null,
       network: null,
+      signature: null,
       isDemo: false,
     });
   }, []);

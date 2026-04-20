@@ -10,11 +10,28 @@ import {
   requestAccess,
   isConnected,
   getNetwork,
+  signBlob,
 } from '@stellar/freighter-api';
 
 export interface WalletConnection {
   publicKey: string;
   network: string;
+}
+
+const UNLOCK_MESSAGE = btoa('PasswordBlock_Master_Key');
+
+/**
+ * Sign a deterministic message with Freighter to act as the encryption key.
+ */
+export async function signUnlockMessage(publicKey: string): Promise<string> {
+  try {
+    const signature = await signBlob(UNLOCK_MESSAGE, { accountToSign: publicKey });
+    if (!signature) throw new Error('Signature was empty');
+    return signature;
+  } catch (err: unknown) {
+    if (err instanceof Error) throw err;
+    throw new Error('Failed to sign unlock message.');
+  }
 }
 
 /**

@@ -115,32 +115,6 @@ export async function decrypt(encrypted: EncryptedData, masterPassword: string):
   return new TextDecoder().decode(decrypted);
 }
 
-// ── Master Password Verification ────────────────────────────────────────────
-
-const VERIFICATION_PLAINTEXT = 'PASSWORDBLOCK_MASTER_KEY_VERIFY_v1';
-
-/**
- * Create a verification token from the master password.
- * This is stored locally to verify the password on subsequent unlocks.
- */
-export async function createVerificationToken(masterPassword: string): Promise<EncryptedData> {
-  return encrypt(VERIFICATION_PLAINTEXT, masterPassword);
-}
-
-/**
- * Verify a master password against a stored verification token.
- */
-export async function verifyMasterPassword(
-  masterPassword: string,
-  token: EncryptedData
-): Promise<boolean> {
-  try {
-    const decrypted = await decrypt(token, masterPassword);
-    return decrypted === VERIFICATION_PLAINTEXT;
-  } catch {
-    return false;
-  }
-}
 
 // ── Entry Encryption ────────────────────────────────────────────────────────
 

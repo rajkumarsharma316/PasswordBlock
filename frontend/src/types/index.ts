@@ -47,12 +47,13 @@ export interface WalletState {
   connected: boolean;
   publicKey: string | null;
   network: string | null;
+  signature?: string | null;
   isDemo: boolean;
 }
 
 // ── App State ───────────────────────────────────────────────────────────────
 
-export type AppView = 'landing' | 'unlock' | 'dashboard';
+export type AppView = 'landing' | 'dashboard';
 
 export interface VaultState {
   unlocked: boolean;
